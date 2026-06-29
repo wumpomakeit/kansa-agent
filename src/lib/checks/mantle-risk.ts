@@ -367,52 +367,75 @@ export async function checkMantleRisk(
 
   // ── 4. Registry Coverage Summary (15 pts) ──
   // Informational: how well-integrated is this agent with known Mantle infra?
-  const allRefAddresses = [
-    ...regAddresses.map((r) => r.address),
-    ...descAddresses,
-  ];
-  const uniqueAddresses = [...new Set(allRefAddresses.map((a) => a.toLowerCase()))];
-  const registryHits = uniqueAddresses.filter((addr) => {
-    try {
-      return findRegistryByAddress("mainnet", addr) !== null;
-    } catch {
-      return false;
-    }
-  });
 
-  const coverageRatio = uniqueAddresses.length > 0
-    ? registryHits.length / uniqueAddresses.length
-    : 0;
+  // Categories where the Mantle Verified Registry can actually verify claims
+  // (the registry only contains DeFi, token, and bridge contracts)
+  const registryApplicableCategories = new Set(Object.keys(CATEGORY_TO_REGISTRY));
+  const hasRegistryApplicableCaps = capabilities.some(
+    (cap) => registryApplicableCategories.has(cap)
+  );
 
-  // Determine risk verdict using risk-evaluator Skill methodology
-  let verdict: "pass" | "warn" | "block";
-  let verdictLabel: string;
-
-  if (uniqueAddresses.length === 0) {
-    verdict = "info" as any; // no data
-    verdictLabel = "Insufficient data for risk verdict";
-    score += 8;
-  } else if (coverageRatio >= 0.5) {
-    verdict = "pass";
-    verdictLabel = `PASS — ${registryHits.length}/${uniqueAddresses.length} addresses verified against Mantle registry`;
-    score += 15;
-  } else if (coverageRatio > 0) {
-    verdict = "warn";
-    verdictLabel = `WARN — Only ${registryHits.length}/${uniqueAddresses.length} addresses found in Mantle registry`;
-    score += 8;
+  if (capabilities.length > 0 && !hasRegistryApplicableCaps) {
+    // Agent's capabilities are entirely outside the DeFi/token/bridge scope —
+    // registry cross-reference is not applicable, so INFO instead of WARN
+    const capList = capabilities.join(", ");
+    checks.push({
+      id: "mrisk-verdict",
+      label: "Risk verdict",
+      severity: "info",
+      message: `Not applicable — this category verifies DeFi/token/bridge contract references, and this agent's capabilities (${capList}) fall outside that scope`,
+      details: `Methodology: mantle-risk-evaluator Skill • Registry: @mantleio/mantle-core v0.1.19 (${registryEntries.length} verified Mantle contracts — all DeFi/token/bridge)`,
+    });
+    score += 15; // full credit — check doesn't apply to this agent type
   } else {
-    verdict = "warn";
-    verdictLabel = `WARN — No referenced addresses found in Mantle Verified Registry (${registryEntries.length} contracts)`;
-    score += 5;
-  }
+    // Agent claims DeFi-scoped capabilities (or none detected) — run full verdict
+    const allRefAddresses = [
+      ...regAddresses.map((r) => r.address),
+      ...descAddresses,
+    ];
+    const uniqueAddresses = [...new Set(allRefAddresses.map((a) => a.toLowerCase()))];
+    const registryHits = uniqueAddresses.filter((addr) => {
+      try {
+        return findRegistryByAddress("mainnet", addr) !== null;
+      } catch {
+        return false;
+      }
+    });
 
-  checks.push({
-    id: "mrisk-verdict",
-    label: "Risk verdict",
-    severity: verdict === "pass" ? "pass" : verdict === "warn" ? "warn" : "info",
-    message: verdictLabel,
-    details: `Methodology: mantle-risk-evaluator Skill (address safety check) • Registry: @mantleio/mantle-core v0.1.19 (${registryEntries.length} verified Mantle contracts)`,
-  });
+    const coverageRatio = uniqueAddresses.length > 0
+      ? registryHits.length / uniqueAddresses.length
+      : 0;
+
+    // Determine risk verdict using risk-evaluator Skill methodology
+    let verdict: "pass" | "warn" | "block";
+    let verdictLabel: string;
+
+    if (uniqueAddresses.length === 0) {
+      verdict = "info" as any; // no data
+      verdictLabel = "Insufficient data for risk verdict";
+      score += 8;
+    } else if (coverageRatio >= 0.5) {
+      verdict = "pass";
+      verdictLabel = `PASS — ${registryHits.length}/${uniqueAddresses.length} addresses verified against Mantle registry`;
+      score += 15;
+    } else if (coverageRatio > 0) {
+      verdict = "warn";
+      verdictLabel = `WARN — Only ${registryHits.length}/${uniqueAddresses.length} addresses found in Mantle registry`;
+      score += 8;
+    } else {
+      verdict = "warn";
+      verdictLabel = `WARN — No referenced addresses found in Mantle Verified Registry (${registryEntries.length} contracts)`;
+      score += 5;
+    }
+
+    checks.push({
+      id: "mrisk-verdict",
+      label: "Risk verdict",
+      severity: verdict === "pass" ? "pass" : verdict === "warn" ? "warn" : "info",
+      message: verdictLabel,
+      details: `Methodology: mantle-risk-evaluator Skill (address safety check) • Registry: @mantleio/mantle-core v0.1.19 (${registryEntries.length} verified Mantle contracts)`,
+    });
+  }
 
   return {
     name: "Mantle Risk Evaluation",
