@@ -11,7 +11,7 @@
 
 An ERC-8004 registration file auditor that checks whether an AI agent's metadata claims are consistent with its on-chain activity on Mantle Network.
 
-> Built for the Mantle Hackathon — AI Tools for Onchain Research track.
+> An AI research agent that audits ERC-8004 agent registrations on Mantle
 
 ---
 
@@ -139,7 +139,7 @@ kansa-agent/
 ## 🧪 API Usage
 
 ```bash
-curl -X POST https://your-app.vercel.app/api/audit \
+curl -X POST https://kansa-agent.vercel.app/api/audit \
   -H "Content-Type: application/json" \
   -d '{
     "registrationJson": "{\"name\":\"My Agent\",\"description\":\"A swap router\",\"version\":\"1.0.0\"}",
