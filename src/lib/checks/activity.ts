@@ -13,6 +13,7 @@ const mantleMainnet = {
 } as const;
 
 // Known capability keywords -> expected on-chain activity patterns
+// Organized by category for easier maintenance
 const CAPABILITY_SIGNALS: Record<
   string,
   {
@@ -21,49 +22,70 @@ const CAPABILITY_SIGNALS: Record<
     tip: string;
   }
 > = {
-  swap: {
-    keywords: [
-      "swap",
-      "trade",
-      "exchange",
-      "dex",
-      "router",
-      "agni",
-      "merchant moe",
-      "fluxion",
-    ],
+  defi_trading: {
+    keywords: ["swap", "dex", "trade", "trading", "arbitrage", "liquidity", "amm", "router"],
     activityLabel: "DEX / swap transactions",
     tip: "Expected: interactions with DEX router contracts",
   },
   lending: {
-    keywords: ["lend", "borrow", "aave", "supply", "lending", "collateral"],
+    keywords: ["lending", "borrow", "lend", "collateral", "supply", "repay", "aave", "liquidation"],
     activityLabel: "Lending protocol interactions",
     tip: "Expected: interactions with Aave V3 or similar lending pools",
   },
+  yield: {
+    keywords: ["yield", "farm", "farming", "staking", "stake", "apy", "apr", "vault"],
+    activityLabel: "Yield farming / staking operations",
+    tip: "Expected: interactions with vault or staking contracts",
+  },
   bridge: {
-    keywords: ["bridge", "cross-chain", "l1", "l2", "transfer"],
+    keywords: ["bridge", "cross-chain", "relay", "messaging", "interop"],
     activityLabel: "Bridge contract interactions",
     tip: "Expected: interactions with bridge contracts",
   },
-  nft: {
-    keywords: ["nft", "mint", "collection", "erc-721", "erc721", "marketplace"],
-    activityLabel: "NFT contract interactions",
-    tip: "Expected: ERC-721 mints or marketplace interactions",
+  security_audit: {
+    keywords: ["audit", "scan", "vulnerability", "security", "static analysis", "fuzzing", "foundry", "exploit", "pentest"],
+    activityLabel: "Security / audit operations",
+    tip: "Security agents may operate off-chain — low on-chain activity is normal",
   },
-  analytics: {
-    keywords: [
-      "analytics",
-      "research",
-      "monitor",
-      "index",
-      "data",
-      "portfolio",
-      "analysis",
-    ],
+  analytics_data: {
+    keywords: ["analytics", "indexer", "subgraph", "dashboard", "monitoring", "metrics", "tracking", "data layer"],
     activityLabel: "Read-only / analytics operations",
     tip: "Analytics agents may have low on-chain activity — this is normal",
   },
+  governance: {
+    keywords: ["governance", "dao", "proposal", "vote", "voting", "treasury", "delegate"],
+    activityLabel: "DAO / governance interactions",
+    tip: "Expected: governance contract calls or treasury management",
+  },
+  identity_reputation: {
+    keywords: ["reputation", "validator", "attestation", "identity", "verification", "credential"],
+    activityLabel: "Identity / reputation operations",
+    tip: "May include attestation writes or validator-related transactions",
+  },
+  rwa: {
+    keywords: ["rwa", "real-world asset", "tokenization", "tokenize", "custody", "settlement", "compliance", "kyc"],
+    activityLabel: "RWA tokenization / compliance operations",
+    tip: "Expected: token minting, custody, or compliance-related transactions",
+  },
+  nft_gaming: {
+    keywords: ["nft", "mint", "marketplace", "gamefi", "collectible", "metaverse"],
+    activityLabel: "NFT / GameFi interactions",
+    tip: "Expected: ERC-721 mints or marketplace interactions",
+  },
+  payments: {
+    keywords: ["payment", "x402", "settlement", "invoice", "subscription"],
+    activityLabel: "Payment / settlement operations",
+    tip: "Expected: token transfers or payment contract interactions",
+  },
+  research: {
+    keywords: ["research", "report", "insight", "recommendation", "due diligence"],
+    activityLabel: "Research / reporting operations",
+    tip: "Research agents typically operate off-chain — low on-chain activity is normal",
+  },
 };
+
+// Categories where low on-chain activity is expected and should not be penalized
+const READ_ONLY_CAPABILITIES = new Set(["analytics_data", "research", "security_audit"]);
 
 function extractClaimedCapabilities(
   reg: RegistrationFile
@@ -241,11 +263,11 @@ export async function checkActivity(
       }
 
       // 2d. Capability-activity consistency (25 pts)
-      const isAnalyticsOnly = capabilities.every(
-        (c) => c.capability === "analytics"
+      const isReadOnly = capabilities.every(
+        (c) => READ_ONLY_CAPABILITIES.has(c.capability)
       );
 
-      if (capabilities.length > 0 && !isAnalyticsOnly) {
+      if (capabilities.length > 0 && !isReadOnly) {
         // Agent claims to do transactions (swap, lend, etc.)
         if (activity.txCount > 0) {
           checks.push({
@@ -267,7 +289,7 @@ export async function checkActivity(
               "This is a significant red flag — the agent claims to perform on-chain actions but has never transacted",
           });
         }
-      } else if (isAnalyticsOnly) {
+      } else if (isReadOnly) {
         checks.push({
           id: "cap-analytics",
           label: "Claims vs. activity",

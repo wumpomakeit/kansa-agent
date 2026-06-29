@@ -20,32 +20,50 @@ import {
 import { validateAddress } from "@mantleio/mantle-core/tools/registry.js";
 import { RegistrationFile, CheckResult, CategoryScore } from "../types";
 
+// ── Categorized keyword lists for detecting capabilities ──
+// Organized by category so future additions are easier
+const CAPABILITY_KEYWORDS: Record<string, string[]> = {
+  defi_trading: ["swap", "dex", "trade", "trading", "arbitrage", "liquidity", "amm", "router"],
+  lending: ["lending", "borrow", "lend", "collateral", "supply", "repay", "aave", "liquidation"],
+  yield: ["yield", "farm", "farming", "staking", "stake", "apy", "apr", "vault"],
+  bridge: ["bridge", "cross-chain", "relay", "messaging", "interop"],
+  security_audit: ["audit", "scan", "vulnerability", "security", "static analysis", "fuzzing", "foundry", "exploit", "pentest"],
+  analytics_data: ["analytics", "indexer", "subgraph", "dashboard", "monitoring", "metrics", "tracking", "data layer"],
+  governance: ["governance", "dao", "proposal", "vote", "voting", "treasury", "delegate"],
+  identity_reputation: ["reputation", "validator", "attestation", "identity", "verification", "credential"],
+  rwa: ["rwa", "real-world asset", "tokenization", "tokenize", "custody", "settlement", "compliance", "kyc"],
+  nft_gaming: ["nft", "mint", "marketplace", "gamefi", "collectible", "metaverse"],
+  payments: ["payment", "x402", "settlement", "invoice", "subscription"],
+  research: ["research", "report", "insight", "recommendation", "due diligence"],
+};
+
 // ── Capability → Registry category mapping ──
-// If an agent claims "swap" capabilities, referenced addresses should be "defi"
-// category contracts (routers, etc.). This maps claimed capabilities to expected
-// registry categories, following the risk-evaluator Skill's cross-reference logic.
-const CAPABILITY_TO_REGISTRY: Record<string, { categories: string[]; labels: string[] }> = {
-  swap: {
+// Maps detected capability categories to expected Mantle registry categories/labels.
+// Categories without a mapping (security_audit, analytics_data, governance,
+// identity_reputation, payments, research) are skipped during registry
+// cross-referencing — they're read-only or off-chain by nature.
+const CATEGORY_TO_REGISTRY: Record<string, { categories: string[]; labels: string[] }> = {
+  defi_trading: {
     categories: ["defi"],
-    labels: ["Router", "Swap"],
-  },
-  trade: {
-    categories: ["defi"],
-    labels: ["Router", "Swap"],
+    labels: ["Router", "Swap", "DEX"],
   },
   lending: {
     categories: ["defi"],
     labels: ["Aave", "Pool", "Lending"],
   },
-  borrow: {
+  yield: {
     categories: ["defi"],
-    labels: ["Aave", "Pool"],
+    labels: ["Vault", "Farm", "Staking"],
   },
   bridge: {
     categories: ["bridge"],
     labels: ["Bridge"],
   },
-  token: {
+  nft_gaming: {
+    categories: ["nft"],
+    labels: ["NFT", "Marketplace", "Collection"],
+  },
+  rwa: {
     categories: ["token"],
     labels: ["Token", "Wrapped"],
   },
@@ -76,13 +94,14 @@ function extractAddressesFromText(text: string): string[] {
 
 /**
  * Detect claimed capabilities from agent name + description
+ * using the categorized keyword list. Returns all matching categories.
  */
 function detectCapabilities(reg: RegistrationFile): string[] {
   const text = `${reg.name || ""} ${reg.description || ""}`.toLowerCase();
   const found: string[] = [];
-  for (const cap of Object.keys(CAPABILITY_TO_REGISTRY)) {
-    if (text.includes(cap)) {
-      found.push(cap);
+  for (const [category, keywords] of Object.entries(CAPABILITY_KEYWORDS)) {
+    if (keywords.some((kw) => text.includes(kw))) {
+      found.push(category);
     }
   }
   return found;
@@ -267,8 +286,8 @@ export async function checkMantleRisk(
       id: "mrisk-cap-none",
       label: "Capability verification",
       severity: "info",
-      message: "No specific DeFi/bridge capabilities detected in description",
-      details: "Add keywords like 'swap', 'lending', 'bridge' for deeper risk analysis",
+      message: "No specific capabilities detected in description",
+      details: "Add keywords like 'swap', 'lending', 'bridge', 'analytics', 'governance' for deeper risk analysis",
     });
     score += 12;
   } else {
@@ -291,7 +310,7 @@ export async function checkMantleRisk(
         id: "mrisk-cap-unverifiable",
         label: "Capability cross-reference",
         severity: "info",
-        message: `Claims ${capabilities.join("/")} capabilities but no referenced addresses are in the Mantle registry`,
+        message: `Claims ${capabilities.join(", ")} capabilities but no referenced addresses are in the Mantle registry`,
         details: "Cannot verify if claimed capabilities match actual contract interactions",
       });
       score += 10;
@@ -301,7 +320,7 @@ export async function checkMantleRisk(
       const consistencyDetails: string[] = [];
 
       for (const cap of capabilities) {
-        const expected = CAPABILITY_TO_REGISTRY[cap];
+        const expected = CATEGORY_TO_REGISTRY[cap];
         if (!expected) continue;
 
         const matching = matchedEntries.filter(
